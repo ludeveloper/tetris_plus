@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tetris</title>
+  <style>
+    canvas {
+      border: 1px solid black;
+      display: block;
+      margin: 20px auto;
+      background: #eee;
+    }
+    body {
+      text-align: center;
+      background: #222;
+      color: #fff;
+    }
+    /* Preview canvas: no border */
+    #previewCanvas {
+      border: none;
+      background: #fff;
+      margin-top: 10px;
+    }
+    /* Digital score board style */
+    #scoreBoard {
+      font-family: 'Digital-7', sans-serif;
+      font-size: 40px;
+      color: #00ff00;
+      margin-top: 15px;
+    }
+    /* Blinking animation for Game Over */
+    @keyframes blink {
+      0%, 50%, 100% { opacity: 1; }
+      25%, 75% { opacity: 0; }
+    }
+    .blink {
+      animation: blink 0.5s step-start infinite;
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="gameCanvas" width="300" height="600"></canvas>
+  <canvas id="previewCanvas" width="120" height="120"></canvas>
+  <div id="scoreBoard">Score: 0</div>
+  <button id="restartButton" style="display:none; margin-top:15px;">Restart</button>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const previewCanvas = document.getElementById("previewCanvas");
+    const pctx = previewCanvas.getContext("2d");
+    const COLS = 10, ROWS = 20, BLOCK_SIZE = 30;
+    let score = 0;
+    let gameRunning = true;
+
+    // Create the board (grid)
+    let board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+
+    // Tetromino shapes including I, O, T, L, J, S, Z
+    const tetrominoes = {
+      I: [
+        [1, 1, 1, 1]
+      ],
+      O: [
+        [1, 1],
+        [1, 1]
+      ],
+      T: [
+        [0, 1, 0],
+        [1, 1, 1]
+      ],
+      L: [
+        [0, 0, 1],
+        [1, 1, 1]
+      ],
+      J: [
+        [1, 0, 0],
+        [1, 1, 1]
+      ],
+      S: [
+        [0, 1, 1],
+        [1, 1, 0]
+      ],
+      Z: [
+        [1, 1, 0],
+        [0, 1, 1]
+      ]
+    };
+
+    // Return a weighted random tetromino shape
+    // Z is weighted as 1 and all others as 2 (so Z appears less frequently)
+    function randomTetromino() {
+      const shapes = [
+        { shape: tetrominoes.I, weight: 2 },
+        { shape: tetrominoes.O, weight: 2 },
+        { shape: tetrominoes.T, weight: 2 },
+        { shape: tetrominoes.L, weight: 2 },
+        { shape: tetrominoes.J, weight: 2 },
+        { shape: tetrominoes.S, weight: 2 },
+        { shape: tetrominoes.Z, weight: 1 }
+      ];
+      const totalWeight = shapes.reduce((sum, item) => sum + item.weight, 0);
+      let randomWeight = Math.random() * totalWeight;
+      for (let item of shapes) {
+        randomWeight -= item.weight;
+        if (randomWeight < 0) return item.shape;
+      }
+    }
+
+    // The active tetromino and the next tetromino for preview
+    let activeTetromino = {
+      shape: randomTetromino(),
+      x: 3,
+      y: 0
+    };
+    let nextTetromino = {
+      shape: randomTetromino(),
+      x: 0,
+      y: 0 // For preview only
+    };
+
+    // Draw board, active tetromino, and preview
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      board.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value) {
+            ctx.fillStyle = "blue";
+            ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            ctx.strokeRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+          }
+        });
+      });
+      ctx.fillStyle = "red";
+      activeTetromino.shape.forEach((row, dy) => {
+        row.forEach((cell, dx) => {
+          if (cell) {
+            ctx.fillRect((activeTetromino.x + dx) * BLOCK_SIZE, (activeTetromino.y + dy) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            ctx.strokeRect((activeTetromino.x + dx) * BLOCK_SIZE, (activeTetromino.y + dy) * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+          }
+        });
+      });
+      drawNext();
+      updateScoreBoard();
+    }
+
+    // Draw the preview tetromino with 20px blocks
+    function drawNext() {
+      pctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+      const shape = nextTetromino.shape;
+      const previewBlock = 20;
+      const offsetX = (previewCanvas.width - shape[0].length * previewBlock) / 2;
+      const offsetY = (previewCanvas.height - shape.length * previewBlock) / 2;
+      pctx.fillStyle = "green";
+      shape.forEach((row, dy) => {
+        row.forEach((cell, dx) => {
+          if (cell) {
+            pctx.fillRect(offsetX + dx * previewBlock, offsetY + dy * previewBlock, previewBlock, previewBlock);
+            pctx.strokeRect(offsetX + dx * previewBlock, offsetY + dy * previewBlock, previewBlock, previewBlock);
+          }
+        });
+      });
+    }
+
+    // Update digital score board
+    function updateScoreBoard() {
+      document.getElementById("scoreBoard").innerText = "Score: " + score;
+    }
+
+    // Check collision with boundaries or settled pieces
+    function collision(piece, offsetX, offsetY) {
+      for (let y = 0; y < piece.shape.length; y++) {
+        for (let x = 0; x < piece.shape[y].length; x++) {
+          if (piece.shape[y][x]) {
+            const newX = piece.x + x + offsetX;
+            const newY = piece.y + y + offsetY;
+            if (newX < 0 || newX >= COLS || newY >= ROWS || (newY >= 0 && board[newY][newX])) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    // Freeze tetromino to board and clear lines
+    function freeze() {
+      activeTetromino.shape.forEach((row, dy) => {
+        row.forEach((cell, dx) => {
+          if (cell) board[activeTetromino.y + dy][activeTetromino.x + dx] = 1;
+        });
+      });
+      // Bonus for landing
+      score += 100;
+      clearLines();
+    }
+
+    // Clear full lines, shift board, and add score
+    function clearLines() {
+      let linesCleared = 0;
+      for (let y = ROWS - 1; y >= 0; y--) {
+        if (board[y].every(cell => cell !== 0)) {
+          board.splice(y, 1);
+          board.unshift(Array(COLS).fill(0));
+          linesCleared++;
+          y++;
+        }
+      }
+      score += linesCleared * 500;
+    }
+
+    // Create new tetromino from preview
+    function newTetrominoFunc() {
+      activeTetromino = { shape: nextTetromino.shape, x: 3, y: 0 };
+      nextTetromino = { shape: randomTetromino(), x: 0, y: 0 };
+    }
+
+    // Move tetromino down, freeze on collision, then check for game over
+    function moveDown() {
+      if (!collision(activeTetromino, 0, 1)) {
+        activeTetromino.y++;
+      } else {
+        freeze();
+        newTetrominoFunc();
+        if (collision(activeTetromino, 0, 0)) {
+          gameOver();
+        }
+      }
+      draw();
+    }
+
+    // Game loop
+    function gameLoop() {
+      if (gameRunning) {
+        moveDown();
+        setTimeout(gameLoop, 500);
+      }
+    }
+
+    // Start game loop
+    gameLoop();
+
+    // Keyboard controls for movement and rotation
+    document.addEventListener("keydown", (e) => {
+      if (!gameRunning) return;
+      switch (e.key) {
+        case "ArrowLeft":
+          if (!collision(activeTetromino, -1, 0)) activeTetromino.x--;
+          break;
+        case "ArrowRight":
+          if (!collision(activeTetromino, 1, 0)) activeTetromino.x++;
+          break;
+        case "ArrowUp":
+          let rotatedShape = rotate(activeTetromino.shape);
+          let isValid = true;
+          rotatedShape.forEach((row, dy) => {
+            row.forEach((cell, dx) => {
+              if (cell) {
+                const newX = activeTetromino.x + dx;
+                if (newX < 0 || newX >= COLS) isValid = false;
+              }
+            });
+          });
+          if (isValid) activeTetromino.shape = rotatedShape;
+          break;
+        case "ArrowDown":
+          moveDown();
+          break;
+      }
+      draw();
+    });
+
+    // Rotate matrix clockwise
+    function rotate(matrix) {
+      return matrix[0].map((_, i) => matrix.map(row => row[i]).reverse());
+    }
+
+    // Game over: stop game loop, blink score, and show restart button
+    function gameOver() {
+      gameRunning = false;
+      document.getElementById("scoreBoard").classList.add("blink");
+      document.getElementById("restartButton").style.display = "block";
+    }
+
+    // Restart button event: reset game state and resume the game
+    document.getElementById("restartButton").addEventListener("click", () => {
+      board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+      score = 0;
+      activeTetromino = { shape: randomTetromino(), x: 3, y: 0 };
+      nextTetromino = { shape: randomTetromino(), x: 0, y: 0 };
+      gameRunning = true;
+      document.getElementById("scoreBoard").classList.remove("blink");
+      document.getElementById("restartButton").style.display = "none";
+      draw();
+      gameLoop();
+    });
+  </script>
+
+</body>
+</html>
