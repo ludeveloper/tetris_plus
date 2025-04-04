@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tetris</title>
+  <style>
+    /* Genel sayfa ayarları */
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background: #222;
+      color: #fff;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    /* Ana konteyner: Oyun alanı ve bilgi paneli */
+    #gameContainer {
+      height: calc(100vh - 160px);
+      display: flex;
+      gap: 20px;
+      padding: 20px;
+      background: #1c2c5b;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      width: max-content;
+    margin-right: auto;
+    margin-left: auto;
+    }
+
+    /* Oyun alanı (canvas) */
+    #gameCanvas {
+      background: #0d0d0d;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+    }
+
+    /* Bilgi Paneli */
+    #infoPanel {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      align-items: center;
+    }
+
+    .infoBox {
+      background: #304a8a;
+      color: #fff;
+      font-weight: bold;
+      text-align: center;
+      padding: 15px;
+      width: 120px;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+      font-size: 16px;
+    }
+
+    /* Önizleme canvası */
+    #previewCanvas {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 5px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      font-weight: bold;
+      background: #ff5722;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    button:hover {
+      background: #ff784e;
+    }
+
+    /* Mobil kontrol tuşları; Tetris konteynerinin hemen altında */
+    #mobileControls {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    #mobileControls button {
+      background: #304a8a;
+      border-radius: 8px;
+      width: 60px;
+      height: 60px;
+      font-size: 24px;
+      color: #fff;
+    }
+
+    /* Blinking animation for Game Over */
+    @keyframes blink {
+      0%, 50%, 100% { opacity: 1; }
+      25%, 75% { opacity: 0; }
+    }
+    .blink {
+      animation: blink 0.5s step-start infinite;
+    }
+
+    /* Mobil uyum: */
+    @media (max-width: 768px) {
+      #gameContainer {
+        flex-direction: row;
+        align-items: center;
+      }
+
+      #infoPanel {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        width: 100px;
+      }
+
+      .infoBox {
+        width: 30px;
+        font-size: 12px;
+        text-wrap: auto;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="gameContainer">
+    <!-- Tetris Canvas -->
+    <canvas id="gameCanvas" width="200" height="400"></canvas>
+
+    <!-- Bilgi Paneli -->
+    <div id="infoPanel">
+      <div class="infoBox">Score: <span id="score">0</span></div>
+      <div class="infoBox">Level: <span id="level">1</span></div>
+      <div class="infoBox">Lines: <span id="lines">0</span></div>
+      <div class="infoBox">High Score: <span id="highScore">0</span></div>
+      <div class="infoBox">Next:</div>
+      <canvas id="previewCanvas" width="100" height="100"></canvas>
+      <button id="restartButton" style="display: none;">Restart</button>
+    </div>
+  </div>
+
+  <!-- Mobil Kontroller: Tetris oyununun hemen altında -->
+  <div id="mobileControls">
+    <button id="btnLeft">←</button>
+    <button id="btnRotate">↺</button>
+    <button id="btnRight">→</button>
+    <button id="btnDown">↓</button>
+  </div>
+
+  <!-- Tetris Oyunu JavaScript Kodları -->
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const previewCanvas = document.getElementById("previewCanvas");
+    const pctx = previewCanvas.getContext("2d");
+
+    const BLOCK_SIZE = 16;
+    const COLS = Math.floor(canvas.width / BLOCK_SIZE); // canvas genişliğine göre tam sütun sayısı
+    const ROWS = Math.floor(canvas.height / BLOCK_SIZE); // canvas yüksekliğine göre tam satır sayısı
+    const PREVIEW_BLOCK_SIZE = 20;
+
+    let board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+    let score = 0, level = 1, linesCleared = 0, highScore = 0;
+    let gameRunning = true;
+    let dropInterval = 1000; // Blok düşme hızı (ms)
+    let lastTime = 0;
+
+    // Tetrimino şekilleri
+    const tetrominoes = {
+      I: [[1, 1, 1, 1]],
+      O: [[1, 1], [1, 1]],
+      T: [[0, 1, 0], [1, 1, 1]],
+      L: [[0, 0, 1], [1, 1, 1]],
+      J: [[1, 0, 0], [1, 1, 1]],
+      S: [[0, 1, 1], [1, 1, 0]],
+      Z: [[1, 1, 0], [0, 1, 1]]
+    };
+
+    // Rastgele Tetrimino seçer
+    function randomTetromino() {
+      const keys = Object.keys(tetrominoes);
+      return tetrominoes[keys[Math.floor(Math.random() * keys.length)]];
+    }
+
+    let activeTetromino = { shape: randomTetromino(), x: 3, y: 0 };
+    let nextTetromino = randomTetromino();
+
+    // Oyun tahtasını çizer
+    function drawBoard() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      board.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value) {
+            ctx.fillStyle = "blue";
+            ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            ctx.strokeRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+          }
+        });
+      });
+    }
+
+    // Belirtilen canvas üzerine tetromino'yu çizer
+    function drawTetromino(tetromino, offsetX, offsetY, context, blockSize) {
+      tetromino.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value) {
+            context.fillStyle = "red";
+            context.fillRect(
+              (x + offsetX) * blockSize,
+              (y + offsetY) * blockSize,
+              blockSize,
+              blockSize
+            );
+            context.strokeRect(
+              (x + offsetX) * blockSize,
+              (y + offsetY) * blockSize,
+              blockSize,
+              blockSize
+            );
+          }
+        });
+      });
+    }
+
+    // "Next" (Önizleme) parçayı çizer
+    function drawPreview() {
+      pctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+      drawTetromino(nextTetromino, 1, 1, pctx, PREVIEW_BLOCK_SIZE);
+    }
+
+    // Aktif blok aşağı hareket ettirilir
+    function moveDown() {
+      if (!collision(activeTetromino, 0, 1)) {
+        activeTetromino.y++;
+      } else {
+        freeze();
+        clearLines();
+        activeTetromino = { shape: nextTetromino, x: 3, y: 0 };
+        nextTetromino = randomTetromino();
+        if (collision(activeTetromino, 0, 0)) {
+          gameOver();
+        }
+      }
+    }
+
+    // Çarpışma kontrolü
+    function collision(tetromino, offsetX, offsetY) {
+      for (let y = 0; y < tetromino.shape.length; y++) {
+        for (let x = 0; x < tetromino.shape[y].length; x++) {
+          if (tetromino.shape[y][x]) {
+            const newX = tetromino.x + x + offsetX;
+            const newY = tetromino.y + y + offsetY;
+            if (
+              newX < 0 ||
+              newX >= COLS ||
+              newY >= ROWS ||
+              (newY >= 0 && board[newY][newX])
+            ) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    // Aktif tetrominoyu tahtaya sabitler
+    function freeze() {
+      activeTetromino.shape.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value) {
+            board[activeTetromino.y + y][activeTetromino.x + x] = value;
+          }
+        });
+      });
+    }
+
+    // Tam dolu satırları temizler
+    function clearLines() {
+      let lines = 0;
+      for (let y = ROWS - 1; y >= 0; y--) {
+        if (board[y].every(value => value)) {
+          board.splice(y, 1);
+          board.unshift(Array(COLS).fill(0));
+          lines++;
+        }
+      }
+      if (lines > 0) {
+        linesCleared += lines;
+        score += lines * 100;
+        if (linesCleared >= level * 10) {
+          level++;
+          dropInterval *= 0.9;
+        }
+      }
+    }
+
+    // Oyun biter
+    function gameOver() {
+      gameRunning = false;
+      document.getElementById("restartButton").style.display = "block";
+    }
+
+    // Oyun döngüsü
+    function update(time = 0) {
+      const deltaTime = time - lastTime;
+      if (deltaTime > dropInterval) {
+        moveDown();
+        lastTime = time;
+      }
+      drawBoard();
+      drawTetromino(activeTetromino.shape, activeTetromino.x, activeTetromino.y, ctx, BLOCK_SIZE);
+      drawPreview();
+      updateUI();
+      if (gameRunning) requestAnimationFrame(update);
+    }
+
+    // Arayüz güncellenir
+    function updateUI() {
+      document.getElementById("score").textContent = score;
+      document.getElementById("level").textContent = level;
+      document.getElementById("lines").textContent = linesCleared;
+    }
+
+    // Klavye kontrolleri
+    document.addEventListener("keydown", (e) => {
+      if (!gameRunning) return;
+      if (e.key === "ArrowLeft" && !collision(activeTetromino, -1, 0))
+        activeTetromino.x--;
+      if (e.key === "ArrowRight" && !collision(activeTetromino, 1, 0))
+        activeTetromino.x++;
+      if (e.key === "ArrowDown") {
+        moveDown();
+      }
+      if (e.key === "ArrowUp")
+        activeTetromino.shape = rotate(activeTetromino.shape);
+    });
+
+    // Matris döndürme (Saat yönü)
+    function rotate(matrix) {
+      return matrix[0].map((_, i) => matrix.map(row => row[i]).reverse());
+    }
+
+    // Restart butonu
+    document.getElementById("restartButton").addEventListener("click", () => {
+      board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+      score = 0;
+      level = 1;
+      linesCleared = 0;
+      dropInterval = 1000;
+      gameRunning = true;
+      document.getElementById("restartButton").style.display = "none";
+      update();
+    });
+
+    // Mobil Kontroller: dokunmatik olaylar
+    document.getElementById("btnLeft").addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      if (!gameRunning) return;
+      if (!collision(activeTetromino, -1, 0))
+        activeTetromino.x--;
+    });
+    document.getElementById("btnRight").addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      if (!gameRunning) return;
+      if (!collision(activeTetromino, 1, 0))
+        activeTetromino.x++;
+    });
+    document.getElementById("btnRotate").addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      if (!gameRunning) return;
+      let rotatedShape = rotate(activeTetromino.shape);
+      let isValid = true;
+      rotatedShape.forEach((row, dy) => {
+        row.forEach((cell, dx) => {
+          if (cell) {
+            const newX = activeTetromino.x + dx;
+            if (newX < 0 || newX >= COLS)
+              isValid = false;
+          }
+        });
+      });
+      if (isValid)
+        activeTetromino.shape = rotatedShape;
+    });
+    document.getElementById("btnDown").addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      if (!gameRunning) return;
+      moveDown();
+    });
+
+    // Oyunu başlat
+    lastTime = 0;
+    update();
+  </script>
+</body>
+
+</html>

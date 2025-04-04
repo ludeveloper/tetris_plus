@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,40 +12,102 @@
       margin: 20px auto;
       background: #eee;
     }
+
     body {
       text-align: center;
       background: #222;
       color: #fff;
+      margin: 0;
+      font-family: Arial, sans-serif;
     }
+
     /* Preview canvas: no border */
     #previewCanvas {
       border: none;
       background: #fff;
-      margin-top: 10px;
     }
+
     /* Digital score board style */
     #scoreBoard {
       font-family: 'Digital-7', sans-serif;
       font-size: 40px;
       color: #00ff00;
-      margin-top: 15px;
     }
+
+    /* Flex container for preview, score board and restart button */
+    .controls {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 15px;
+      margin: 15px auto;
+    }
+
     /* Blinking animation for Game Over */
     @keyframes blink {
-      0%, 50%, 100% { opacity: 1; }
-      25%, 75% { opacity: 0; }
+
+      0%,
+      50%,
+      100% {
+        opacity: 1;
+      }
+
+      25%,
+      75% {
+        opacity: 0;
+      }
     }
+
     .blink {
       animation: blink 0.5s step-start infinite;
     }
+
+    /* Mobile controls style */
+    #mobileControls {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      margin: 20px auto;
+    }
+
+    #mobileControls button {
+      width: 50px;
+      height: 50px;
+      font-size: 24px;
+      border: none;
+      background: #555;
+      color: #fff;
+      border-radius: 5px;
+      outline: none;
+    }
+
+    #mobileControls button:active {
+      background: #777;
+    }
   </style>
 </head>
+
 <body>
 
   <canvas id="gameCanvas" width="300" height="600"></canvas>
-  <canvas id="previewCanvas" width="120" height="120"></canvas>
-  <div id="scoreBoard">Score: 0</div>
-  <button id="restartButton" style="display:none; margin-top:15px;">Restart</button>
+  <div class="controls">
+    <canvas id="previewCanvas" width="120" height="120"></canvas>
+    <!-- Mobile Controls -->
+    <div id="mobileControls">
+      <button id="btnLeft">←</button>
+      <button id="btnRotate">↺</button>
+      <button id="btnRight">→</button>
+      <button id="btnDown">↓</button>
+    </div>
+    <div class="score-title">Score:</div>
+    <div class="controls">
+      <div id="scoreBoard">0</div>
+      <button id="restartButton" style="display:none;">Restart</button>
+    </div>
+  </div>
+
+
 
   <script>
     const canvas = document.getElementById("gameCanvas");
@@ -60,37 +123,16 @@
 
     // Tetromino shapes including I, O, T, L, J, S, Z
     const tetrominoes = {
-      I: [
-        [1, 1, 1, 1]
-      ],
-      O: [
-        [1, 1],
-        [1, 1]
-      ],
-      T: [
-        [0, 1, 0],
-        [1, 1, 1]
-      ],
-      L: [
-        [0, 0, 1],
-        [1, 1, 1]
-      ],
-      J: [
-        [1, 0, 0],
-        [1, 1, 1]
-      ],
-      S: [
-        [0, 1, 1],
-        [1, 1, 0]
-      ],
-      Z: [
-        [1, 1, 0],
-        [0, 1, 1]
-      ]
+      I: [[1, 1, 1, 1]],
+      O: [[1, 1], [1, 1]],
+      T: [[0, 1, 0], [1, 1, 1]],
+      L: [[0, 0, 1], [1, 1, 1]],
+      J: [[1, 0, 0], [1, 1, 1]],
+      S: [[0, 1, 1], [1, 1, 0]],
+      Z: [[1, 1, 0], [0, 1, 1]]
     };
 
     // Return a weighted random tetromino shape
-    // Z is weighted as 1 and all others as 2 (so Z appears less frequently)
     function randomTetromino() {
       const shapes = [
         { shape: tetrominoes.I, weight: 2 },
@@ -109,7 +151,7 @@
       }
     }
 
-    // The active tetromino and the next tetromino for preview
+    // Active tetromino and next tetromino for preview
     let activeTetromino = {
       shape: randomTetromino(),
       x: 3,
@@ -192,7 +234,6 @@
           if (cell) board[activeTetromino.y + dy][activeTetromino.x + dx] = 1;
         });
       });
-      // Bonus for landing
       score += 100;
       clearLines();
     }
@@ -217,7 +258,7 @@
       nextTetromino = { shape: randomTetromino(), x: 0, y: 0 };
     }
 
-    // Move tetromino down, freeze on collision, then check for game over
+    // Move tetromino down, freeze if collision, then check for game over
     function moveDown() {
       if (!collision(activeTetromino, 0, 1)) {
         activeTetromino.y++;
@@ -231,15 +272,13 @@
       draw();
     }
 
-    // Game loop
+    // Game loop using setTimeout for demo purposes
     function gameLoop() {
       if (gameRunning) {
         moveDown();
         setTimeout(gameLoop, 500);
       }
     }
-
-    // Start game loop
     gameLoop();
 
     // Keyboard controls for movement and rotation
@@ -272,19 +311,49 @@
       draw();
     });
 
+    // Mobile Controls: add touch event listeners
+    document.getElementById("btnLeft").addEventListener("touchstart", () => {
+      if (!gameRunning) return;
+      if (!collision(activeTetromino, -1, 0)) activeTetromino.x--;
+      draw();
+    });
+    document.getElementById("btnRight").addEventListener("touchstart", () => {
+      if (!gameRunning) return;
+      if (!collision(activeTetromino, 1, 0)) activeTetromino.x++;
+      draw();
+    });
+    document.getElementById("btnRotate").addEventListener("touchstart", () => {
+      if (!gameRunning) return;
+      let rotatedShape = rotate(activeTetromino.shape);
+      let isValid = true;
+      rotatedShape.forEach((row, dy) => {
+        row.forEach((cell, dx) => {
+          if (cell) {
+            const newX = activeTetromino.x + dx;
+            if (newX < 0 || newX >= COLS) isValid = false;
+          }
+        });
+      });
+      if (isValid) activeTetromino.shape = rotatedShape;
+      draw();
+    });
+    document.getElementById("btnDown").addEventListener("touchstart", () => {
+      if (!gameRunning) return;
+      moveDown();
+    });
+
     // Rotate matrix clockwise
     function rotate(matrix) {
       return matrix[0].map((_, i) => matrix.map(row => row[i]).reverse());
     }
 
-    // Game over: stop game loop, blink score, and show restart button
+    // Game over: stop loop and show restart button
     function gameOver() {
       gameRunning = false;
       document.getElementById("scoreBoard").classList.add("blink");
       document.getElementById("restartButton").style.display = "block";
     }
 
-    // Restart button event: reset game state and resume the game
     document.getElementById("restartButton").addEventListener("click", () => {
       board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
       score = 0;
@@ -297,6 +366,6 @@
       gameLoop();
     });
   </script>
-
 </body>
+
 </html>
